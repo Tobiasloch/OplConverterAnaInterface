@@ -26,8 +26,10 @@ import javax.swing.JTextArea;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -224,7 +226,7 @@ public class mainWindow extends JFrame {
 				DefaultTableModel tableModel = new DefaultTableModel();
 				table.setModel(tableModel);
 				
-				header = new OplHeader(files, console);
+				header = new OplHeader(files[0], console);
 				// den conflict Typ bestimmen
 				header.setConflictHandling(getConflictHandling());
 	
@@ -235,18 +237,15 @@ public class mainWindow extends JFrame {
 					return;
 				}
 				
-				for (String key : header.getHashMapTypes().keySet()) {
-					OplType item = header.getHashMapTypes().get(key);
+				for (OplType item : header.getTypes()) {
 					
 					if (!chckbxTypenInReihenkpfe.isSelected()) tableModel.addColumn(item.getType());
 					
-					if (item.getHash().size() > 0) {
+					if (item.getElements().size() > 0) {
 						int activeCol = tableModel.getColumnCount()-1;
 						
 						int activeRow = 0;
-						for (Long elemKey : item.getHash().keySet()) {
-							OplTypeElement elem = item.getHash().get(elemKey);
-							
+						for (OplTypeElement elem : item.getElements()) {
 							String text = elem.getName() + "(" + elem.getId() + ")";
 							
 							if (activeRow >= tableModel.getRowCount()) {
@@ -317,9 +316,9 @@ public class mainWindow extends JFrame {
 			
 			@Override
 			public void columnMoved(TableColumnModelEvent e) {
-				if (e.getToIndex() != e.getFromIndex()) {
+				/*if (e.getToIndex() != e.getFromIndex()) {
 					header.swapTypes(e.getFromIndex(), e.getToIndex());
-				}
+				}*/
 			}
 			
 			@Override
@@ -577,7 +576,8 @@ public class mainWindow extends JFrame {
 					}
 					// setting up converter
 					header.setNullValue(NullValue.getText());
-					oplConverter = new convertOPL(header, outputFile, console, getSelectedDelimiter(), dateFormatField.getText());
+					OutputStream fileStream = new ByteArrayOutputStream();
+					oplConverter = new convertOPL(header, fileStream, console, getSelectedDelimiter(), dateFormatField.getText());
 					oplConverter.setMainFrame(mainFrame);
 					
 					thread = new convertOplThread(oplConverter, mainFrame);

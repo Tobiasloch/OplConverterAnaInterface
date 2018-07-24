@@ -6,6 +6,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -69,12 +70,11 @@ public class OplHeader {
 	public static final String DEFAULT_NULL_VALUE = "-1";
 	public static final int[] MIN_MAX_CONFLICT_HANDLING_TYPES = {0, 2};
 	
-	private LinkedHashMap<String, OplType> types; // Liste die die Opl Typen enthält
-	private HashMap<Integer, OplType> order;
+	private ArrayList<OplType> types; // Liste die die Opl Typen enthält
 	private String fileInformation; // Informationen zur Datei. Meistens Ort der Aufnahme bzw. Dateiname
 	
-	private long[] headerStart;
-	private long[] headerEnd;
+	private long headerStart;
+	private long headerEnd;
 	
 	private int errorStatus;
 	
@@ -86,20 +86,19 @@ public class OplHeader {
 	private int conflictHandling; 
 	private String NullValue = DEFAULT_NULL_VALUE;
 	
-	private File[] OplFiles; // Datei die ausgelesen werden soll
+	private File OplFile; // Datei die ausgelesen werden soll
 	
 	private Console console; // optional: Konsole
 	
 	public OplHeader() {
-		this(new File[0]);
+		this(new File(""));
 	}
 	
-	public OplHeader(File[] OplFiles) {
-		this.OplFiles = OplFiles;
+	public OplHeader(File OplFile) {
+		this.OplFile = OplFile;
 		
-		types = new LinkedHashMap<String, OplType>();
+		types = new ArrayList<OplType>();
 		console = new Console();
-		order = new HashMap<Integer, OplType>();
 		
 		fileInformation = "";
 		
@@ -107,112 +106,14 @@ public class OplHeader {
 		
 		setConflictHandling(DEFAULT_CONFLICT_HANDLING);
 		
-		headerEnd = new long[OplFiles.length];
-		headerStart = new long[OplFiles.length];
-		
-		for (int i = 0; i < OplFiles.length; i++) {
-			headerEnd[i] = -1;
-			headerStart[i] = -1;
-		}
+		headerEnd = -1;
+		headerStart = -1;
 	}
 	
-	public OplHeader(File[] OplFiles, Console console) {
+	public OplHeader(File OplFiles, Console console) {
 		this(OplFiles);
 		
 		this.console = console;
-	}
-	
-	public int extractHeaderInformation() {
-		if (OplFiles.length > 0) return extractHeaderInformation(OplFiles);
-		else {
-			console.printConsoleErrorLine("Es wurde keine Opl Datei angegeben!", 100);
-			return 100;
-		}
-	}
-	
-	public int extractHeaderInformation(File[] OplFiles) {
-		this.OplFiles = OplFiles;
-		
-		// header informationen resetten
-		fileInformation = "";
-		resetTypes();
-		
-		int i = 0; // header start and end counter; Wichtig, damit der converter weiß ab wann er anfangen kann den Inhalt zu lesen
-		for (File f : OplFiles) {
-			OplHeader workingHeader = new OplHeader(OplFiles, console);
-			int errorcode = workingHeader.extractHeaderInformation(f);
-			
-			headerStart[i] = workingHeader.headerStart[0];
-			headerEnd[i] = workingHeader.headerEnd[0];
-			
-			// check errorlevel
-			if (errorcode != 0) {
-				console.printConsoleErrorLine("Der Vorgang wurde bei der Datei " + f + " abgebrochen", errorcode);
-				return errorcode;
-			}
-			
-			// wenn f das erste element ist oder die aktuelle Header mit der ausgelesenen übereinstimmt
-			if (fileInformation.equals("") && types.size() == 0) {
-				this.fileInformation = workingHeader.getFileInformation();
-				setTypes(workingHeader);
-			} else {
-				if (getConflictHandling() == 0) {
-					if (!workingHeader.equals(this)) {
-						console.printConsoleErrorLine("Die folgende Datei stimmt nicht mit den vorherigen überein! Header: " + f, 109);
-						errorStatus = 109;
-						return 109;
-					}
-				} else if (getConflictHandling() == 1) {
-					// bei auftreten einer neuen Variable wird diese hinzugefügt
-					LinkedHashMap<String, OplType> workingMap = workingHeader.getHashMapTypes();
-					
-					for (String key : workingMap.keySet()) { // den key von jedem ausgelesenem Typ auslesen
-						OplType t = workingMap.get(key);
-						
-						if (types.containsKey(key)) { // wenn der Typ bereits existeirt, dann dürfen nur noch nicht vorhandene Typen importiert werden
-							LinkedHashMap<Long, OplTypeElement> workingType = t.getHash();
-							LinkedHashMap<Long, OplTypeElement> typeHash = types.get(key).getHash();
-
-							typeHash.putAll(workingType);
-						} else {// wenn der Typ noch nicht existiert, dann kann er ohne Konflikte hinzugfefügt werden
-							addType(t);
-						}
-					}
-					
-				} else if (getConflictHandling() == 2) {
-					// bei auftreten einer variable die nicht in allen maps vorkommt, dann wird diese gelöscht
-					LinkedHashMap<String, OplType> workingMap = workingHeader.getHashMapTypes();
-					
-					// den key von jedem ausgelesenem Typ auslesen
-					for (Iterator<Map.Entry<String, OplType>> elem = types.entrySet().iterator(); elem.hasNext();) { 
-						Map.Entry<String, OplType> entry = elem.next();
-						OplType type = entry.getValue();
-						String TypeKey = type.getType();
-						    
-						// wenn der Typ bereits existiert, dann wird überprüft ob er auch im workinHeader vorkommt, sonst wird er gelöscht
-						if(workingMap.containsKey(TypeKey)) { 
-							LinkedHashMap<Long, OplTypeElement> typeHash = types.get(TypeKey).getHash();
-							LinkedHashMap<Long, OplTypeElement> t = workingMap.get(TypeKey).getHash();
-									
-							for (Iterator<Map.Entry<Long, OplTypeElement>> it = typeHash.entrySet().iterator(); it.hasNext();) {
-								Map.Entry<Long, OplTypeElement> typeEntry = it.next();
-								OplTypeElement typeElement = typeEntry.getValue();
-								long typeElementKey = typeElement.getId();
-										    
-								if (!t.containsKey(typeElementKey)) types.get(TypeKey).removeElement(typeElement);
-							}
-						} else {
-						    removeType(type);
-						}
-					}
-				}
-			}
-			
-			i++; // header start and end counter
-		}
-		
-		errorStatus = 0;
-		return errorStatus;
 	}
 	
 	@Override
@@ -221,23 +122,18 @@ public class OplHeader {
 		
 		OplHeader header = (OplHeader) object;
 
-		if (fileInformation.equals(header.fileInformation) && types.equals(header.getHashMapTypes())) {
+		if (fileInformation.equals(header.fileInformation) && types.equals(header.getTypes())) {
 			return true;
 		}
 		
 		return false;
 	}
 	
-	private void resetTypes() {
-		this.types = new LinkedHashMap<String, OplType>();
-		this.order = new HashMap<Integer, OplType>();
-	}
-	
 	public OplTypeElement getElementFromId(long id) {
-		for (OplType type : getTypes()) {
-			HashMap<Long, OplTypeElement> map = type.getHash();
-			
-			if (map.containsKey(id)) return map.get(id);
+		for (OplType type : types) {
+			for (OplTypeElement element : type.getElements()) {
+				if (element.getId() == id) return element;
+			}
 		}
 		
 		return null;
@@ -246,21 +142,24 @@ public class OplHeader {
 	public ArrayList<OplTypeElement> getAllElements(){
 		ArrayList<OplTypeElement> elements = new ArrayList<OplTypeElement>();
 		
-		for (int i = 0; i < order.size(); i++) {
-			OplType type = order.get(i);
-			
-			for (int k = 0; k < type.getHash().size(); k++) {
-				OplTypeElement elem = type.getHash().get(k);
-				
-				elements.add(elem);
-			}
+		for (OplType type : types) {
+			elements.addAll(type.getElements());
 		}
 		
 		return elements;
 	}
 	
 	public OplType getType(String type) {
-		return types.get(type);
+		for (OplType t : types) {
+			if (t.getType() == type) return t;
+		}
+		
+		return null;
+	}
+	
+	public int extractHeaderInformation() {
+		return extractHeaderInformation(OplFile);
+		
 	}
 	
 	/**
@@ -382,11 +281,11 @@ public class OplHeader {
 					element.setType(typeObject);
 					typeObject.addElement(element);
 				} else if (foundHeader) {
-					headerStart[0] = startHeader;
-					headerEnd[0] = --lineCounter;
+					headerStart = startHeader;
+					headerEnd = --lineCounter;
 					
-					console.printConsoleLine("Der Header wurde von Zeile " + headerStart[0] 
-							+ " bis Zeile " + headerEnd[0] + " ausgelesen");
+					console.printConsoleLine("Der Header wurde von Zeile " + headerStart 
+							+ " bis Zeile " + headerEnd + " ausgelesen");
 					
 					break;
 				}
@@ -415,44 +314,12 @@ public class OplHeader {
 	public int checkErrorStatus() {
 		return errorStatus;
 	}
-
-	public void swapTypes(OplType a, OplType b) {
-		order.put(b.getPosition(), a);
-		order.put(a.getPosition(), b);
-		
-		int pos = b.getPosition();
-		
-		b.setPosition(a.getPosition());
-		a.setPosition(pos);
-	}
-
-	public void swapTypes(int a, int b) {
-		swapTypes(order.get(a), order.get(b));
-	}
-	
-	public void setTypes(OplHeader header) {
-		this.types = header.getHashMapTypes();
-		this.order = header.getOrder();
-	}
-	
-	public void removeType(OplType type) {
-		types.remove(type.getType());
-	}
 	
 	public void addType(OplType type) {
-		types.put(type.getType(), type);
-		order.put(order.size(), type);
+		types.add(type);
 	}
 	
 	public ArrayList<OplType> getTypes() {
-		ArrayList<OplType> list = new ArrayList<OplType>();
-		
-		for (String key : types.keySet()) list.add(types.get(key));
-		
-		return list;
-	}
-	
-	public LinkedHashMap<String, OplType> getHashMapTypes() {
 		return types;
 	}
 
@@ -460,12 +327,12 @@ public class OplHeader {
 		return fileInformation;
 	}
 
-	public File[] getOplFile() {
-		return OplFiles;
+	public File getOplFile() {
+		return OplFile;
 	}
 
-	public void setOplFile(File[] oplFiles) {
-		this.OplFiles = oplFiles;
+	public void setOplFile(File oplFiles) {
+		this.OplFile = oplFiles;
 		errorStatus = 107;
 	}
 
@@ -477,11 +344,11 @@ public class OplHeader {
 		this.console = console;
 	}
 
-	public long[] getHeaderEnd() {
+	public long getHeaderEnd() {
 		return headerEnd;
 	}
 	
-	public long[] getHeaderStart() {
+	public long getHeaderStart() {
 		return headerStart;
 	}
 
@@ -505,13 +372,5 @@ public class OplHeader {
 
 	public void setNullValue(String nullValue) {
 		NullValue = nullValue;
-	}
-
-	public HashMap<Integer, OplType> getOrder() {
-		return order;
-	}
-
-	public void setOrder(HashMap<Integer, OplType> order) {
-		this.order = order;
 	}
 }

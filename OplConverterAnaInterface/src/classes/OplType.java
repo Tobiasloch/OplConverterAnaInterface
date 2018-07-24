@@ -8,15 +8,13 @@ public class OplType {
 	
 	private String type;
 	private int position;
-	private LinkedHashMap<Long, OplTypeElement> elements;
-	private HashMap<Integer, OplTypeElement> order;
+	private ArrayList<OplTypeElement> elements;
 	
 	OplType(String type, int position, OplTypeElement element) {
 		this.type = type;
-		elements = new LinkedHashMap<Long, OplTypeElement>();
+		elements = new ArrayList<OplTypeElement>();
 		
 		this.setPosition(position);
-		order = new HashMap<Integer, OplTypeElement>();
 		
 		if (element != null) addElement(element);
 	}
@@ -46,23 +44,8 @@ public class OplType {
 		return false;
 	}
 	
-	public void swapTypes(OplTypeElement a, OplTypeElement b) {
-		order.put(b.getPosition(), a);
-		order.put(a.getPosition(), b);
-		
-		int pos = b.getPosition();
-		
-		b.setPosition(a.getPosition());
-		a.setPosition(pos);
-	}
-
-	public void swapTypes(int a, int b) {
-		swapTypes(order.get(a), order.get(b));
-	}
-	
 	public void addElement(OplTypeElement element) {
-		elements.put(element.getId(), element);
-		order.put(order.size(), element);
+		elements.add(element);
 	}
 	
 	public void addElement() {
@@ -80,19 +63,11 @@ public class OplType {
 		this.type = type;
 	}
 	
-	public OplTypeElement getElement(long key) {
+	public OplTypeElement getElement(int key) {
 		return elements.get(key);
 	}
 	
 	public ArrayList<OplTypeElement> getElements() {
-		ArrayList<OplTypeElement> list = new ArrayList<OplTypeElement>();
-		
-		for (long key : elements.keySet()) list.add(elements.get(key));
-		
-		return list;
-	}
-	
-	public LinkedHashMap<Long, OplTypeElement> getHash() {
 		return elements;
 	}
 

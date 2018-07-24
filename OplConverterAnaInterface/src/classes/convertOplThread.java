@@ -1,5 +1,10 @@
 package classes;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.Reader;
+
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 
@@ -28,6 +33,13 @@ public class convertOplThread extends Thread implements Runnable  {
 					, "Fehler!", JOptionPane.ERROR_MESSAGE);
 		}
 		
+		File f = new File("");
+		File fOut = new File("")
+		BufferedReader bw = new BufferedReader(IOUtils.toString(converter.getInputStream()));
+		for () {
+			
+			
+		}
 	}
 
 	public int getErrorlevel() {
