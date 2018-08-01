@@ -1,25 +1,19 @@
 package classes;
 
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
-import java.util.TimeZone;
+import java.util.HashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import javax.swing.JFrame;
-import javax.swing.ProgressMonitor;
 
 public class convertOPL {
 	
@@ -45,15 +39,17 @@ public class convertOPL {
 	public static final String DELIM_SEMICOLON = ";";
 	public static final String DELIM_SPACE = " ";
 	
-	private JFrame mainFrame;
-	
 	public static final String DEFAULT_DELIMITER = DELIM_SEMICOLON;
 	public static final String DEFAULT_DATE_FORMAT = "dd'.'MM'.'yyyy' 'kk':'mm':'ss";
 	
+	public static final String DEFAULT_NULL_VALUE = "-1";
+	private String nullValue = DEFAULT_NULL_VALUE;
+	
 	// for error handling
-	String notMatchingLines; // lines that did not match any pattern
-	String linesInWrongBlock; // lines that where in the wrong second block
-	String idsNotFound;
+	public ArrayList<Long> notMatchingLines = new ArrayList<Long>(); // lines that did not match any pattern
+	public ArrayList<Long> linesInWrongBlock = new ArrayList<Long>(); // lines that where in the wrong second block
+	public ArrayList<Long> idsNotFound = new ArrayList<Long>(); // lines that ids could not be found
+	public ArrayList<Long> elementTwiceInBlock = new ArrayList<Long>(); // elements that have be found twice in one block. The first one is being printed
 	
 	private ByteArrayOutputStream outputStream;
 	private OplHeader header; // header of the opl file
@@ -61,63 +57,86 @@ public class convertOPL {
 	private String delimiter; // Trenn String; wird zwischen jeden wert gepackt
 	private SimpleDateFormat dateFormat; // convertiert den Zeitstempel in das angegebene Format
 	
-	private Console console;
+	private String regex;
+	private String varName[];
 	
 	public convertOPL() {
-		this(null, null);
+		this(null);
 	}
 	
-	public convertOPL(OplHeader header, ByteArrayOutputStream outputStream) {
-		this(header, outputStream, new Console());
+	public convertOPL(File OplFile) {
+		this(OplFile, new ByteArrayOutputStream(), DEFAULT_DELIMITER, DEFAULT_DATE_FORMAT);
 	}
 	
-	public convertOPL(OplHeader header, ByteArrayOutputStream outputStream, Console console) {
-		this(header, outputStream, console, DEFAULT_DELIMITER, DEFAULT_DATE_FORMAT);
-	}
-	
-	public convertOPL(OplHeader header, ByteArrayOutputStream fileStream, Console console, String delimiter, String dateFormat) {
-		this.setHeader(header);
-		this.setOutputStream(fileStream);
-		this.setConsole(console);
+	public convertOPL(File OplFile, ByteArrayOutputStream fileStream, String delimiter, String dateFormat) {
+		loadHeaderFromFile(OplFile);
 		
-		notMatchingLines = "";
-		linesInWrongBlock = "";
-		idsNotFound = "";
+		this.setOutputStream(fileStream);
 		
 		setDelimiter(delimiter);
 		setDateFormat(dateFormat);
-		setMainFrame(null);
+		
+		regex = "";
+		varName = null;
+	}
+	
+	public String generateRegex() {
+		if (header != null && header.checkErrorStatus() == 0) {
+			ArrayList<OplTypeElement> elements = header.getAllElements();
+			
+			varName = new String[elements.size()];
+			String s = dateFormat.toPattern() + ";(?<SZP>\\d+);"; // date pattern and szp stamp
+			
+			
+			for (OplTypeElement element : elements) {
+				s+= "(?<" + element.getName() + ">\\d+);";
+				System.out.println("(?<" + element.getName() + ">\\d+);");
+			}
+			
+			regex = s;
+			return s;
+		} else {
+			throw new IllegalArgumentException("Es gab ein Problem mit dem header!");
+		}
+	}
+	
+	public void loadHeaderFromFile(File f) { // loading new opl header from a given opl file f
+		if (f != null && f.exists()) {
+			OplHeader header = new OplHeader(f);
+			try {
+				header.extractHeaderInformation();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			
+			this.header = header;
+		}
 	}
 
-	public int convertToTextFile() {
-		return convertToTextFile(this.header, outputStream, this.console, delimiter);
+	public int convertToStream() {
+		return convertToStream(this.header, outputStream, delimiter);
 	}
 	
-	public int convertToTextFile(OplHeader header, OutputStream outputFile) {
-		return convertToTextFile(header, outputFile, new Console(), DEFAULT_DELIMITER);
+	public int convertToStream(OplHeader header, ByteArrayOutputStream outputStream) {
+		return convertToStream(header, outputStream, DEFAULT_DELIMITER);
 	}
 	
-	public int convertToTextFile(OplHeader header, OutputStream outputStream, Console console, String delimiter) {
+	public int convertToStream(OplHeader header, ByteArrayOutputStream outputStream, String delimiter) throws IllegalArgumentException {
 		///////////////////////////////////////////////////////////////////////////////////
 		// checking for errors
-		if (console == null) {
-			console = new Console();
-			console.printConsoleWarningLine("Es wurde keine Konsole übergeben, also wird eine neue erstellt.", 200);
-		}
 		if (outputStream == null) {
-			console.printConsoleErrorLine("Es wurde keine outputFile übergeben!", 200);
-			return 200;
+			throw new IllegalArgumentException("Es wurde kein outputStream übergeben!");
 		}
 		if (header == null) {
-			console.printConsoleErrorLine("Es wurde keine header übergeben! pointer:" + header, 200);
-			return 200;
+			throw new IllegalArgumentException("Es wurde kein header übergeben!");
 		}
 		
 		int headerStatus = header.checkErrorStatus();
 		if (headerStatus != 0) { // wenn es ein Fehlercode beim header gibt
-			console.printConsoleErrorLine("Der Header ist fehlerhaft!", headerStatus);
-			return headerStatus;
+			throw new IllegalArgumentException("Der Header ist fehlerhaft!");
 		}
+		
+		this.outputStream = outputStream;
 		
 		///////////////////////////////////////////////////////////////////////////////////
 		
@@ -125,7 +144,6 @@ public class convertOPL {
 		File oplFile = header.getOplFile();
 		
 		FileReader fr;
-		FileWriter fw;
 		try {
 			// open input file
 			fr = new FileReader(oplFile);
@@ -149,8 +167,8 @@ public class convertOPL {
 			long elementTime = -1;
 			
 			// define arraylist that has elements that will be in the lane
-			ArrayList<OplTypeElement> blockElements;
-				
+			HashMap<Long, OplTypeElement> blockElements;
+
 			// jump to end of header
 			long headerEnd = header.getHeaderEnd();
 			for(; linecounter < headerEnd+1; linecounter++) br.readLine();
@@ -160,21 +178,21 @@ public class convertOPL {
 				// set up matcher
 				Matcher blockHeaderMatcher = blockHeaderPattern.matcher(line);
 					
-					if (blockHeaderMatcher.find()) { // wenn eine block header gefunden wurde
+				if (blockHeaderMatcher.find()) { // wenn eine block header gefunden wurde
 					// get time of header
 					headerTime = Long.parseLong(blockHeaderMatcher.group(1));
-	
+		
 					// convert to date
 					Date time = new Date();
 					time.setTime(headerTime * 1000); // date needs time in miliseconds and unix timestamp has time in seconds
-					
+						
 					pw.write(dateFormat.format(time) + delimiter); 				// Zeitstempel im vorher definierten Format
 					pw.write(blockHeaderMatcher.group(2) + delimiter);	// SZP Wert
 				}
 				line = br.readLine();
 				
 				// set up elements in line
-				blockElements = new ArrayList<OplTypeElement>();
+				blockElements = new HashMap<Long, OplTypeElement>();
 					
 				// schleife geht solange wie die datei nicht leer ist und keine weitere headerzeile gefunden wird
 				while (!blockHeaderMatcher.find() && line!= null) {
@@ -188,45 +206,39 @@ public class convertOPL {
 							// extract id and value
 							long id = Long.parseLong(blockElementMatcher.group(2));
 							String value = String.valueOf(Long.parseLong(blockElementMatcher.group(3)));
-								
+							
 							OplTypeElement element = header.getElementFromId(id);
 							if (element != null) {
 								element.setValue(value);
-								blockElements.add(element);
+								if (!blockElements.containsKey(element.getId())) {
+									blockElements.put(element.getId(), element);
+								} else {
+									elementTwiceInBlock.add(linecounter);
+								}
 							} else {
-								idsNotFound+= ", " + linecounter;
+								idsNotFound.add(linecounter);
 							}
 						} else {
-							linesInWrongBlock+= ", " + linecounter;
+							linesInWrongBlock.add(linecounter);
 						}
 					} else {
-						notMatchingLines+= ", " + linecounter;
+						notMatchingLines.add(linecounter);
 					}
 					line = br.readLine();
 						
 					if (line != null) blockHeaderMatcher = blockHeaderPattern.matcher(line);
 					linecounter++;
 				}
-					
-				// wenn das conflict behavior von opl header auf 1 also Mit Null werten gesetzt wird, 
-				// dann werden alle noch nicht gefundenen Types eingefügt und mit null werten versehen
-				if (header.getConflictHandling() == OplHeader.USE_NULL_VALUES) {
-					ArrayList<OplTypeElement> comp = AComplementsB(header.getAllElements(), blockElements);
-					
-					for (OplTypeElement elem : comp) {
-						elem.setValue(header.getNullValue());
-							
-						blockElements.add(elem);
+
+				// printing the line in the given order of types and elements
+				for (OplType type : header.getTypes()) {
+					for (OplTypeElement element : type.getElements()) {
+						if (blockElements.containsKey(element.getId())) pw.write(element.getValue() + delimiter);
+						else {
+							pw.write(nullValue + delimiter);
+						}
 					}
 				}
-					
-					
-				// wenn der Block zu ende ist, dann wird er ausgegeben
-				Collections.sort(blockElements);
-
-				for (OplTypeElement element : blockElements) {
-					pw.write(element.getValue() + delimiter);
-				}			
 				pw.write("\n");
 				linecounter++;
 			}
@@ -235,34 +247,30 @@ public class convertOPL {
 				
 		} catch (IOException e) {
 			e.printStackTrace();
-			console.printConsoleErrorLine("Es gab ein Problem beim lesen der Datei!", 202);
-			return 202;
+			throw new RuntimeException("Es gab ein Problem beim lesen der Datei!");
 		}
-		
+		System.out.println(generateRegex());
 		printWrongLines();
 		
 		return 0;
 	}
-	
-	private void printWrongLines() {
-		if (!notMatchingLines.equals("")) {
-			console.printConsoleLine("Folgende Zeilen wurden übersprungen, da kein Zellenelement oder Zeilenkopf erkannt wurde: " + notMatchingLines);
+
+	public void printWrongLines() {
+		for (Long value : notMatchingLines) {
+			System.out.println("Folgende Zeilen wurden übersprungen, da kein Zellenelement oder Zeilenkopf erkannt wurde: " + value.toString());
 		}
 		
-		if (!linesInWrongBlock.equals("")) {
-			console.printConsoleLine("In folgenden Zeilen wurde eine Zeile im falschen block festgestellt: " + linesInWrongBlock);
+		for (Long value : linesInWrongBlock) {
+			System.out.println("In folgenden Zeilen wurde eine Zeile im falschen block festgestellt: " + value.toString());
 		}
 		
-		if (!idsNotFound.equals("")) {
-			console.printConsoleErrorLine("In folgenden Zeilen wurde die ID nicht erkannt: " + idsNotFound, 205);
+		for (Long value : idsNotFound) {
+			System.out.println("In folgenden Zeilen wurde die ID nicht erkannt: " + value.toString());
 		}
-	}
-	
-	private ArrayList<OplTypeElement> AComplementsB(ArrayList<OplTypeElement> A, ArrayList<OplTypeElement> B) {
-		ArrayList<OplTypeElement> result = new ArrayList<OplTypeElement>(A);
-		result.removeAll(B);
 		
-		return result;
+		for (Long value : elementTwiceInBlock) {
+			System.out.println("In folgenden Zeilen wurde ein Wert zum wiederholten mal in einem Block gefunden: " + value.toString());
+		}
 	}
 	
 	// opl file that is being converted
@@ -274,6 +282,14 @@ public class convertOPL {
 		header.setOplFile(files);
 	}
 
+	public String getNullValue() {
+		return nullValue;
+	}
+
+	public void setNullValue(String nullValue) {
+		this.nullValue = nullValue;
+	}
+	
 	public OplHeader getHeader() {
 		return header;
 	}
@@ -298,36 +314,12 @@ public class convertOPL {
 		this.outputStream = outputStream;
 	}
 
-	public Console getConsole() {
-		return console;
-	}
-
-	public void setConsole(Console console) {
-		this.console = console;
-	}
-
-	public JFrame getMainFrame() {
-		return mainFrame;
-	}
-
-	public void setMainFrame(JFrame mainFrame) {
-		this.mainFrame = mainFrame;
-	}
-
 	public String getDateFormat() {
 		return dateFormat.toPattern();
 	}
 
 	public void setDateFormat(String format) {
 		this.dateFormat = new SimpleDateFormat(format);
-	}
-	
-	public String getTimeZone() {
-		return dateFormat.getTimeZone().getID();
-	}
-
-	public void setTimeZone(String timeZoneID) {
-		dateFormat.setTimeZone(TimeZone.getTimeZone(timeZoneID));
 	}
 	
 	public ByteArrayInputStream getInputStream() {

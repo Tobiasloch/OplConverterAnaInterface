@@ -226,16 +226,22 @@ public class mainWindow extends JFrame {
 				DefaultTableModel tableModel = new DefaultTableModel();
 				table.setModel(tableModel);
 				
-				header = new OplHeader(files[0], console);
+				header = new OplHeader(files[0]);
 				// den conflict Typ bestimmen
-				header.setConflictHandling(getConflictHandling());
 	
-				int errorcode = header.extractHeaderInformation();
+				int errorcode = -1;
+				try {
+					errorcode = header.extractHeaderInformation();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
 				
 				if (errorcode != 0) {
 					console.printConsoleErrorLine("Es gab ein Problem beim Tabellen rendern!", errorcode);
 					return;
 				}
+				
 				
 				for (OplType item : header.getTypes()) {
 					
@@ -499,7 +505,7 @@ public class mainWindow extends JFrame {
 		
 		NullValue = new JTextField();
 		NullValue.setHorizontalAlignment(JTextField.CENTER);
-		NullValue.setText(OplHeader.DEFAULT_NULL_VALUE);
+		NullValue.setText(convertOPL.DEFAULT_NULL_VALUE);
 		NullValuePanel.add(NullValue, BorderLayout.EAST);
 		NullValue.setColumns(5);
 		
@@ -575,10 +581,10 @@ public class mainWindow extends JFrame {
 						}
 					}
 					// setting up converter
-					header.setNullValue(NullValue.getText());
-					OutputStream fileStream = new ByteArrayOutputStream();
-					oplConverter = new convertOPL(header, fileStream, console, getSelectedDelimiter(), dateFormatField.getText());
-					oplConverter.setMainFrame(mainFrame);
+					ByteArrayOutputStream fileStream = new ByteArrayOutputStream();
+					oplConverter = new convertOPL(null, fileStream, getSelectedDelimiter(), dateFormatField.getText());
+					oplConverter.setHeader(header);
+					oplConverter.setNullValue(NullValue.getText());
 					
 					thread = new convertOplThread(oplConverter, mainFrame);
 					thread.setConsole(console);

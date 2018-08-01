@@ -1,8 +1,12 @@
 package classes;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.Reader;
 
 import javax.swing.JFrame;
@@ -22,7 +26,7 @@ public class convertOplThread extends Thread implements Runnable  {
 	
 	@Override
 	public void run() {
-		setErrorlevel(converter.convertToTextFile());
+		setErrorlevel(converter.convertToStream());
 		
 		if (errorlevel == 0) {
 			console.printConsoleLine("Die Datei wurde erfolgreich umgewandelt!");
@@ -33,12 +37,40 @@ public class convertOplThread extends Thread implements Runnable  {
 					, "Fehler!", JOptionPane.ERROR_MESSAGE);
 		}
 		
-		File f = new File("");
-		File fOut = new File("")
-		BufferedReader bw = new BufferedReader(IOUtils.toString(converter.getInputStream()));
-		for () {
+		File f = converter.getHeader().getOplFile();
+		File fOut = new File(f.getParentFile().getPath() + "\\output stream.txt");
+		BufferedReader br = new BufferedReader(new InputStreamReader(converter.getInputStream()));
+		
+		FileWriter fw = null;
+		try {
+			fw = new FileWriter(fOut);
+		} catch (IOException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		if (fw == null) throw new IllegalArgumentException();
+		
+		BufferedWriter bw = new BufferedWriter(fw);
+		try {
+			for (OplType t : converter.getHeader().getTypes()) {
+				bw.write(t.getType() + ";");
+			}
+			bw.write("\n");
 			
-			
+			for (String line = br.readLine(); line != null; line = br.readLine()) {
+				bw.write(line + "\n");
+			}
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		try {
+			br.close();
+			bw.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}
 	}
 

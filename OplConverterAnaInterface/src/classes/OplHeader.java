@@ -5,13 +5,6 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -42,10 +35,10 @@ public class OplHeader {
 			+ "\\p{Blank}*(?<type>(?:\\s\\S+)+) \\p{Blank}*(?<id>\\d{10})";
 	
 	public static final String[] HEADER_REGEX = {"\\d{10}(?:\\s\\S+)+", // 1
-			"\\d{10}(?<fileInformation>(?:\\s\\S+)+)", // 2
+			"\\d{10} (?<fileInformation>(?:\\S+(?:\\s\\S+)*)+)", // 2
 			"\\d{10}(?:\\s\\S+)+", // 3
-			"\\d{10} \\d{10} (?<id>\\d{10})(?<typeName>(?:\\s\\S+)+)", // 4
-			"(?<type>(?:\\S+\\s)+)",  // 5
+			"\\d{10} \\d{10} (?<id>\\d{10}) (?<typeName>(?:\\S+(?:\\s\\S+)*)+)", // 4
+			"(?<type>(?:\\S+(?:\\s\\S+)*)+)",  // 5
 			"\\d{10}"}; // 6
 	
 	public static final int[] HEADER_REGEX_END = {76, 152, 228, 326, 391, 401};
@@ -63,12 +56,6 @@ public class OplHeader {
 	public static final String HEADER_SIXTH_REGEX = "(?<id>\\d{10})";
 	public static final int HEADER_SIXTH_END = 402;
 	*/
-	public static final int CANCEL_PROGRESS = 0;
-	public static final int USE_NULL_VALUES = 1;
-	public static final int JUST_EQUAL_VALUES = 2;
-	public static final int DEFAULT_CONFLICT_HANDLING = CANCEL_PROGRESS;
-	public static final String DEFAULT_NULL_VALUE = "-1";
-	public static final int[] MIN_MAX_CONFLICT_HANDLING_TYPES = {0, 2};
 	
 	private ArrayList<OplType> types; // Liste die die Opl Typen enthält
 	private String fileInformation; // Informationen zur Datei. Meistens Ort der Aufnahme bzw. Dateiname
@@ -83,12 +70,7 @@ public class OplHeader {
 	// 1: mit null werten wird gearbeitet
 	// 2: nur gleiche Variablen werden übertragen
 	
-	private int conflictHandling; 
-	private String NullValue = DEFAULT_NULL_VALUE;
-	
 	private File OplFile; // Datei die ausgelesen werden soll
-	
-	private Console console; // optional: Konsole
 	
 	public OplHeader() {
 		this(new File(""));
@@ -98,22 +80,13 @@ public class OplHeader {
 		this.OplFile = OplFile;
 		
 		types = new ArrayList<OplType>();
-		console = new Console();
 		
 		fileInformation = "";
 		
 		errorStatus = 106;
 		
-		setConflictHandling(DEFAULT_CONFLICT_HANDLING);
-		
 		headerEnd = -1;
 		headerStart = -1;
-	}
-	
-	public OplHeader(File OplFiles, Console console) {
-		this(OplFiles);
-		
-		this.console = console;
 	}
 	
 	@Override
@@ -151,13 +124,13 @@ public class OplHeader {
 	
 	public OplType getType(String type) {
 		for (OplType t : types) {
-			if (t.getType() == type) return t;
+			if (t.getType().equals(type)) return t;
 		}
 		
 		return null;
 	}
 	
-	public int extractHeaderInformation() {
+	public int extractHeaderInformation() throws IOException{
 		return extractHeaderInformation(OplFile);
 		
 	}
@@ -170,12 +143,11 @@ public class OplHeader {
 	 * @return returns the errorcode
 	 * 
 	 */
-	public int extractHeaderInformation(File OplFile) {
+	public int extractHeaderInformation(File OplFile) throws IOException {
 		// Überprüfe ob die Datei existiert
 		if (!OplFile.exists()) {
-			console.printConsoleErrorLine("Die OPL Datei existiert nicht!", 102);
 			errorStatus = 102;
-			return 102;
+			throw new IllegalArgumentException("Die OplDatei existiert nicht! " + errorStatus);
 		}
 		
 		// Muster erstellen, nach dem später gesucht werden kann
@@ -212,8 +184,8 @@ public class OplHeader {
 						if (start >= 0 && start < line.length() && end >= 0 && end <= line.length()) {
 							headerParts[i] = line.substring(start, end);
 						} else {
-							console.printConsoleErrorLine("Es gab ein Problem mit den Teilen der Header Zeile!", 108);
-							return 108;
+							br.close();
+							throw new OplHeaderException("Es gab ein Problem mit den Teilen einer Header Zeile(" + lineCounter + ") ! errorcode: 108");
 						}
 							
 						// matcher erstellen
@@ -239,9 +211,9 @@ public class OplHeader {
 					
 					// überprüft ob genug Daten gefunden wurden
 					if (m[1].groupCount() != 1 || m[3].groupCount() != 2 || m[4].groupCount() != 1) {
-						console.printConsoleErrorLine("Es wurden nicht 4 Variablen in der Zeile gefunden! Zeile: " + lineCounter, 103);
 						errorStatus = 103;
-						return 103;
+						br.close();
+						throw new OplHeaderException("Es wurden nicht 4 Variablen in der Zeile gefunden! Zeile: " + lineCounter + " errorcode: " + errorStatus);
 					}
 					
 					// load file Information
@@ -261,11 +233,11 @@ public class OplHeader {
 					try {
 						id = Long.parseLong(m[3].group(1));
 					} catch (NumberFormatException nfe) {
-						console.printConsoleErrorLine("Die ID konnte nicht richtig gelesen werden!; Zeile: " 
-								+ lineCounter, 104);
 						errorStatus = 104;
+						br.close();
 						nfe.printStackTrace();
-						return 104;
+						throw new OplHeaderException("Die ID konnte nicht richtig gelesen werden!; Zeile: " 
+								+ lineCounter + " errorstatus: " + errorStatus);
 					}
 					element.setId(id);
 					
@@ -284,7 +256,7 @@ public class OplHeader {
 					headerStart = startHeader;
 					headerEnd = --lineCounter;
 					
-					console.printConsoleLine("Der Header wurde von Zeile " + headerStart 
+					System.out.println("Der Header wurde von Zeile " + headerStart 
 							+ " bis Zeile " + headerEnd + " ausgelesen");
 					
 					break;
@@ -293,18 +265,15 @@ public class OplHeader {
 			
 			br.close();
 		} catch (IOException e) {
-			console.printConsoleErrorLine("Es Gab ein Problem mit dem Lesen der Datei!", 101);
+			System.err.println("Es Gab ein Problem mit dem Lesen der Datei! errorcode: " + errorStatus);
 			errorStatus = 101;
 			
-			e.printStackTrace();
-			
-			return 101;
+			throw e;
 		}
 		
 		if (!foundHeader) {
-			console.printConsoleErrorLine("Es wurde kein Headerblock gefunden!", 105);
 			errorStatus = 105;
-			return 105;
+			throw new OplHeaderException("Es wurde kein Headerblock gefunden! errorcode: " + errorStatus);
 		}
 		
 		errorStatus = 0;
@@ -336,14 +305,6 @@ public class OplHeader {
 		errorStatus = 107;
 	}
 
-	public Console getConsole() {
-		return console;
-	}
-
-	public void setConsole(Console console) {
-		this.console = console;
-	}
-
 	public long getHeaderEnd() {
 		return headerEnd;
 	}
@@ -352,25 +313,4 @@ public class OplHeader {
 		return headerStart;
 	}
 
-	public int getConflictHandling() {
-		return conflictHandling;
-	}
-	
-
-	public void setConflictHandling(int conflictHandling) {
-		if (conflictHandling < MIN_MAX_CONFLICT_HANDLING_TYPES[0] || conflictHandling > MIN_MAX_CONFLICT_HANDLING_TYPES[1]) {
-			console.printConsoleError("Das angegebene Konflikt Verhalten existiert nicht!", 111);
-			return;
-		}
-		this.conflictHandling = conflictHandling;
-		this.errorStatus = 110;
-	}
-
-	public String getNullValue() {
-		return NullValue;
-	}
-
-	public void setNullValue(String nullValue) {
-		NullValue = nullValue;
-	}
 }
