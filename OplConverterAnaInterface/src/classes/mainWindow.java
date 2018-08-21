@@ -582,7 +582,7 @@ public class mainWindow extends JFrame {
 					}
 					// setting up converter
 					ByteArrayOutputStream fileStream = new ByteArrayOutputStream();
-					oplConverter = new convertOPL(null, fileStream, getSelectedDelimiter(), dateFormatField.getText());
+					oplConverter = new convertOPL(null, fileStream, getSelectedDelimiter());
 					oplConverter.setHeader(header);
 					oplConverter.setNullValue(NullValue.getText());
 					

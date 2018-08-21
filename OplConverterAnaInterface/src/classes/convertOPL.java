@@ -41,6 +41,9 @@ public class convertOPL {
 	
 	public static final String DEFAULT_DELIMITER = DELIM_SEMICOLON;
 	public static final String DEFAULT_DATE_FORMAT = "dd'.'MM'.'yyyy' 'kk':'mm':'ss";
+	public static final String DEFAULT_DATE_REGEX = "\\d{2}.\\d{2}.\\d{4} \\d{2}:\\d{2}:\\d{2}";
+	private String dateRegex = DEFAULT_DATE_REGEX;
+	public static char DEFAULT_START_CHAR = 'c';
 	
 	public static final String DEFAULT_NULL_VALUE = "-1";
 	private String nullValue = DEFAULT_NULL_VALUE;
@@ -65,16 +68,20 @@ public class convertOPL {
 	}
 	
 	public convertOPL(File OplFile) {
-		this(OplFile, new ByteArrayOutputStream(), DEFAULT_DELIMITER, DEFAULT_DATE_FORMAT);
+		this(OplFile, new ByteArrayOutputStream(), DEFAULT_DELIMITER, DEFAULT_DATE_FORMAT, DEFAULT_DATE_REGEX);
 	}
 	
-	public convertOPL(File OplFile, ByteArrayOutputStream fileStream, String delimiter, String dateFormat) {
+	public convertOPL(File OplFile, ByteArrayOutputStream fileStream, String delimiter) {
+		this(OplFile, fileStream, delimiter, DEFAULT_DATE_FORMAT, DEFAULT_DATE_REGEX);
+	}
+	
+	public convertOPL(File OplFile, ByteArrayOutputStream fileStream, String delimiter, String dateFormat, String dateRegex) {
 		loadHeaderFromFile(OplFile);
 		
 		this.setOutputStream(fileStream);
 		
 		setDelimiter(delimiter);
-		setDateFormat(dateFormat);
+		setDateFormat(dateFormat, dateRegex);
 		
 		regex = "";
 		varName = null;
@@ -85,12 +92,12 @@ public class convertOPL {
 			ArrayList<OplTypeElement> elements = header.getAllElements();
 			
 			varName = new String[elements.size()];
-			String s = dateFormat.toPattern() + ";(?<SZP>\\d+);"; // date pattern and szp stamp
-			
+			String s = dateRegex + ";(?<SZP>\\d+);"; // date pattern and szp stamp
 			
 			for (OplTypeElement element : elements) {
-				s+= "(?<" + element.getName() + ">\\d+);";
-				System.out.println("(?<" + element.getName() + ">\\d+);");
+				// removing all non alphanumeric charcters from the name, because named groups in java regex cannot have non alphanumeric values in their name
+				// also puts a letter at the start if there is none
+				s+= "(?<" + convertNameToMatchingName(element.getName()) + ">\\d+);";
 			}
 			
 			regex = s;
@@ -98,6 +105,18 @@ public class convertOPL {
 		} else {
 			throw new IllegalArgumentException("Es gab ein Problem mit dem header!");
 		}
+	}
+	
+	private String convertNameToMatchingName(String name) {
+		String s = name.replaceAll("[^A-Za-z0-9]", ""); // removing all non alphanumeric
+		
+		// checks if the string starts with a char and if not adds one
+		char c = s.charAt(0);
+		if (!((c >= 'A' && c <= 'Z') || (c>='a' && c<='b'))) {
+			s = DEFAULT_START_CHAR + s;
+		}
+		
+		return s;
 	}
 	
 	public void loadHeaderFromFile(File f) { // loading new opl header from a given opl file f
@@ -318,11 +337,16 @@ public class convertOPL {
 		return dateFormat.toPattern();
 	}
 
-	public void setDateFormat(String format) {
+	public void setDateFormat(String format, String regex) {
 		this.dateFormat = new SimpleDateFormat(format);
+		this.dateRegex = regex;
 	}
 	
 	public ByteArrayInputStream getInputStream() {
 		return new ByteArrayInputStream(outputStream.toByteArray());
+	}
+
+	public String getDateRegex() {
+		return dateRegex;
 	}
 }
